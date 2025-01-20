@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [ "commons", 
+    "scheduler_client",
+    "scheduler_core",
+    "scheduler_service",
+    "worker_service",
+]
+
