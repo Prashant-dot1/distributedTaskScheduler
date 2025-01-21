@@ -40,7 +40,7 @@ pub enum TaskStatus {
         worker_id : String
     },
     Completed{
-        result: String
+        result: serde_json::Value
     },
     Failed {
         error: String, 

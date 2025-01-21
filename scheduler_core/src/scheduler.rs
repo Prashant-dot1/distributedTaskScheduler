@@ -32,7 +32,7 @@ impl Scheduler {
         }
 
         // we need to publish it to the queue if everything is fine
-        self.queue.publish_task(&task).await?;
+        self.queue.publish_task(task).await?;
         Ok(())
     }
 }
