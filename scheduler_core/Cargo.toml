@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.85"
 chrono = { version = "0.4.39", features = ["serde"] }
 serde = { version = "1.0.217", features = ["derive"] }
 uuid = { version = "1.12.0", features = ["serde"] }
