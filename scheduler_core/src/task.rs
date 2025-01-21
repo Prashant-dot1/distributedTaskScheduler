@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub struct Task {
     pub id: Uuid,
     pub name: String, 
+    pub payload: serde_json::Value,
     pub schedule: Schedule,
     pub dependencies: Vec<Uuid>,
     pub status: TaskStatus,
@@ -51,7 +52,7 @@ pub enum TaskStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RetryPolicy {
-    Noretry,
+    NoRetry,
     Failed {
         attempts: u32,
         delay: Duration
