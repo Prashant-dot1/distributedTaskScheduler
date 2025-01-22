@@ -2,6 +2,8 @@ use crate::{error::SchedulerError, task::Task, task::TaskStatus};
 use async_trait::async_trait;
 use uuid::Uuid;
 
+pub mod in_memory_store;
+
 #[async_trait]
 pub trait StateStore {
     async fn store_task(&self, task : &Task) -> Result<(), SchedulerError>;
