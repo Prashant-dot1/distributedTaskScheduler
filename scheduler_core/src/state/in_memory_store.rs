@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{clone, collections::HashMap, ptr::hash};
 
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -31,15 +31,37 @@ impl StateStore for InMemoryStore {
     }
 
     async fn get_task(&self, task_id: Uuid) -> Result<Option<Task> , SchedulerError> {
-        todo!()
+
+        let hashmap = self.tasks.read().await;
+        let task = hashmap.get(&task_id);
+
+        Ok(task.cloned())
     }
 
     async fn update_task(&self, task_id: Uuid, status: TaskStatus) -> Result<(), SchedulerError> {
-        todo!()
+
+        let mut hashmap = self.tasks.write().await;
+        
+        if let Some(task) = hashmap.get_mut(&task_id) {
+            task.status = status;
+            return Ok(())
+        }
+        else {
+            return Err(SchedulerError::StorageError(format!("Unable to update the task with id {}", task_id)));
+        }
     }
 
     async fn get_pending_tasks(&self) -> Result<Vec<Task>, SchedulerError> {
-        todo!()
+        
+        let hashmap = self.tasks.read().await;
+
+        let pending_tasks = hashmap
+                            .values()
+                            .filter(|t| { t.status == TaskStatus::Pending })
+                            .cloned()
+                            .collect();
+
+        Ok(pending_tasks)
     }
 }
 
