@@ -3,6 +3,10 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 pub mod in_memory_store;
+pub mod postgres;
+
+pub use self::postgres::PostgresStore;
+pub use self::in_memory_store::InMemoryStore;
 
 #[async_trait]
 pub trait StateStore {

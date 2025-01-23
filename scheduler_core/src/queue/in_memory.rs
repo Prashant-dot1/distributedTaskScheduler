@@ -67,7 +67,7 @@ mod tests {
         let task_id = task.id;  // Save the ID before publishing
         
         // publish
-        queue.publish_task(task).await.expect("failed to pushlish the task");
+        queue.publish_task(task).await.expect("failed to publish the task");
 
         let consumed_task = queue.consume_task().await.expect("failed to consume a task from the queue");
         assert!(consumed_task.is_some(), "Should get something from the queue");
