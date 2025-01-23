@@ -1,9 +1,15 @@
 [workspace]
 resolver = "2"
-members = [ "commons", 
-    "scheduler_client",
+members = [
     "scheduler_core",
     "scheduler_service",
+    "commons",
+    "scheduler_client",
     "worker_service",
 ]
 
+[workspace.dependencies]
+async-trait = "0.1.85"
+tokio = { version = "1.32.0", features = ["full"] }
+uuid = { version = "1.12.0", features = ["serde", "v4"] }
+dotenv = "0.15"
