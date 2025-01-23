@@ -122,6 +122,42 @@ pub mod tests {
 
         assert_eq!(store.tasks.read().await.len(), 5, "5 tasks should be stored in this hashmap");
     }
+
+    #[tokio::test]
+    async fn concurrent_updates_get() {
+
+        use std::sync::Arc;
+
+        let store = Arc::new(InMemoryStore::new());
+        let mut handles  = vec![];
+
+        for i in 0..5 {
+
+            let store_clone = Arc::clone(&store);
+
+            let handle = tokio::spawn(async move {
+                let task = create_task(&format!("task{}",i));
+                let task_id = task.id;
+
+                store_clone.store_task(&task).await.expect("Task should have been stored");
+
+                let updated_task = TaskStatus::Running { worker_id: format!("worker{}",i) };
+
+                store_clone.update_task(task_id, updated_task).await.expect("Unable to update the task");
+            });
+
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.await.expect("Unable to join the async tasks");
+        }
+
+        let p_tasks = store.get_pending_tasks().await.expect("Unable to get the pending tasks");
+        assert_eq!(p_tasks.len(),0, "The pending tasks should be 0 as all of them are in running state");
+
+
+    }
 }
 
 
