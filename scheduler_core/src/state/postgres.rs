@@ -16,7 +16,7 @@ impl PostgresStore {
         dotenv().ok();
 
         let database_url = database_url
-            .map(String::from)
+            .map(|s| String::from(s))
             .unwrap_or_else(|| std::env::var("DATABASE_URL")
             .expect("DATABASE URL must be set"));
 
@@ -79,5 +79,40 @@ impl StateStore for PostgresStore {
 
     async fn get_pending_tasks(&self) -> Result<Vec<Task>, SchedulerError> {
         todo!()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::task::{RetryPolicy, Schedule};
+
+    use super::*;
+    use uuid::Uuid;
+
+    fn create_task(name : &str) -> Task {
+        Task {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            payload: serde_json::json!({"test": "DATA"}),
+            schedule: Schedule::Once(chrono::Utc::now()),
+            dependencies: vec![],
+            status: TaskStatus::Pending,
+            time_out: Duration::from_secs(60),
+            retry_policy: RetryPolicy::NoRetry
+        }
+    }
+
+
+    #[tokio::test]
+    async fn insert_task() {
+
+        let task = create_task("task1");
+        let store = PostgresStore::new(None).await.expect("Failed to create the postgres store");
+
+        store.store_task(&task).await.expect("unable to store the task");
+
     }
 }
