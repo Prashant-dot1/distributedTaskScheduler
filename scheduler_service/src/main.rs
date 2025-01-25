@@ -11,7 +11,7 @@ async fn main() -> Result<(), std::io::Error> {
     let queue = Arc::new(InMemoryQueue::new());
 
     // Create scheduler with concrete implementations
-    let scheduler = Scheduler::new(queue, state_store);
+    let _scheduler = Scheduler::new(queue, state_store);
 
     println!("Scheduler service started successfully!");
 
