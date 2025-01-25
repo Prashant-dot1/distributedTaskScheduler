@@ -118,7 +118,40 @@ impl StateStore for PostgresStore {
     }
 
     async fn get_pending_tasks(&self) -> Result<Vec<Task>, SchedulerError> {
-        todo!()
+        
+        let res = sqlx::query("SELECT * from tasks where STATUS = $1")
+        .bind(serde_json::to_value(TaskStatus::Pending)
+            .map_err(|e| SchedulerError::StorageError(e.to_string()))?)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e|  SchedulerError::QueueError(e.to_string()))?;
+
+
+        let mut tasks = vec![];
+        
+        for row in res {
+
+            let time_out_milis = row.get::<i64, _>("time_out");
+            let task_serde_value = serde_json::json!(
+                {
+                    "id": row.get::<Uuid, _>("id"),
+                    "name": row.get::<String, _>("name"),
+                    "payload": row.get::<serde_json::Value, _>("payload"),
+                    "status": row.get::<serde_json::Value, _>("status"),
+                    "schedule": row.get::<serde_json::Value, _>("schedule"),
+                    "dependencies": row.get::<Vec<Uuid>, _>("dependencies"),
+                    "time_out": Duration::from_millis(time_out_milis as u64),
+                    "retry_policy": row.get::<serde_json::Value,_>("retry_policy")
+                }
+            );
+
+            let task = serde_json::from_value::<Task>(task_serde_value)
+                                            .map_err(|e| SchedulerError::StorageError(e.to_string()))?;
+            
+            tasks.push(task);
+        }
+
+        Ok(tasks)
     }
 }
 
@@ -232,5 +265,15 @@ mod tests {
             handle.await.expect("Joining to async tasks failed");
         }
 
+    }
+
+    #[tokio::test]
+    async fn get_pending_tasks() {
+
+        let store = PostgresStore::new(None).await.expect("Failed to cerate a db store");
+
+        let tasks = store.get_pending_tasks().await.expect("Failed to get the pending tasks");
+
+        assert!(tasks.len() > 0, "because i defineitly have one or more pending takss");
     }
 }
