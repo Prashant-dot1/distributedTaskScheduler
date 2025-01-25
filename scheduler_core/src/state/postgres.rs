@@ -1,8 +1,10 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
-use sqlx::{postgres::PgPoolOptions, PgPool, migrate::MigrateDatabase};
+use sqlx::{postgres::PgPoolOptions, PgPool, migrate::MigrateDatabase, Row};
 use dotenv::dotenv;
 
-use crate::{error::SchedulerError, task::{Task,TaskStatus}};
+use crate::{error::SchedulerError, task::{Task, TaskStatus}};
 use uuid::Uuid;
 
 use super::StateStore;
@@ -70,11 +72,49 @@ impl StateStore for PostgresStore {
     }
 
     async fn get_task(&self, task_id: Uuid) -> Result<Option<Task> , SchedulerError> {
-        todo!()
+        
+        let res = sqlx::query("SELECT * from tasks where id = $1").bind(task_id)
+        .fetch_optional(&self.pool).await.map_err(|e|  SchedulerError::QueueError(e.to_string()))?;
+
+
+        match res {
+            Some(row) => {
+
+                let time_out_milis = row.get::<i64, _>("time_out");
+                let serde_json_value = serde_json::json!(
+                    {
+                        "id": row.get::<Uuid, _>("id"),
+                        "name": row.get::<String, _>("name"),
+                        "payload": row.get::<serde_json::Value, _>("payload"),
+                        "status": row.get::<serde_json::Value, _>("status"),
+                        "schedule": row.get::<serde_json::Value, _>("schedule"),
+                        "dependencies": row.get::<Vec<Uuid>, _>("dependencies"),
+                        "time_out": Duration::from_millis(time_out_milis as u64),
+                        "retry_policy": row.get::<serde_json::Value,_>("retry_policy")
+                    }
+                );
+
+                let task= serde_json::from_value::<Task>(serde_json_value)
+                            .map_err(|e| SchedulerError::StorageError(e.to_string()))?;
+
+                Ok(Some(task))
+            },
+            None => {
+                Ok(None)
+            }
+        }
     }
 
     async fn update_task(&self, task_id: Uuid, status: TaskStatus) -> Result<(), SchedulerError> {
-        todo!()
+        
+        let res = sqlx::query("UPDATE tasks SET STATUS = $1 WHERE id = $2")
+                                        .bind(&serde_json::to_value(&status).map_err(|e| SchedulerError::QueueError(e.to_string()))?)
+                                        .bind(task_id)
+                                        .fetch_optional(&self.pool)
+                                        .await
+                                        .map_err(|e| SchedulerError::StorageError(e.to_string()))?;
+
+        Ok(())
     }
 
     async fn get_pending_tasks(&self) -> Result<Vec<Task>, SchedulerError> {
@@ -139,5 +179,58 @@ mod tests {
         for handle in handles {
             handle.await.expect("Unable to join");
         }
+    }
+
+    #[tokio::test]
+    async fn get_task_with_id() {
+
+
+        let store = PostgresStore::new(None).await.expect("Failed to create a db store");
+
+        let task = create_task("task to get");
+
+        let task_id = task.id;
+
+        // insert it into the db 
+        store.store_task(&task).await.expect("failed to insert the task");
+
+        //get the task
+        let task_from_db = store.get_task(task_id).await.expect("Failed to get the task from db");
+
+        assert!(task_from_db.is_some(), "There is a value from gotten from the db");
+
+        assert_eq!(task_from_db.unwrap().id, task_id, "The task id matches");
+    }
+
+    #[tokio::test]
+    async fn update_task_concurrently() {
+
+        use std::sync::Arc;
+
+        let store = Arc::new(PostgresStore::new(None).await.expect("Failed to cerate a db store"));
+        let mut handles = vec![];
+
+        for i in 0..5 {
+            
+            let store_clone= Arc::clone(&store);
+            let handle = tokio::spawn( async move {
+                let task = create_task(&format!("task_to_update{}", i));
+
+                //create a task
+                store_clone.store_task(&task).await.expect("Failed to create a task");
+
+                //update the status
+                store_clone.update_task(task.id, TaskStatus::Failed { error: format!("MOMKilled {}",i).to_owned(), attempts: i })
+                .await.expect(&format!("Update failed to task {}", i));
+            });
+
+            handles.push(handle);
+        }
+
+
+        for handle in handles {
+            handle.await.expect("Joining to async tasks failed");
+        }
+
     }
 }
