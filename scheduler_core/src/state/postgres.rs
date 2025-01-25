@@ -115,4 +115,29 @@ mod tests {
         store.store_task(&task).await.expect("unable to store the task");
 
     }
+
+    #[tokio::test]
+    async fn concurrent_inserts() {
+
+        use std::sync::Arc;
+
+        let store = Arc::new(PostgresStore::new(None).await.expect("Failed to get a store created"));
+        let mut handles = vec![];
+
+        for i in 0..5 {
+            
+            let store_clone = Arc::clone(&store);
+
+            let handle = tokio::spawn(async move {
+                let task = create_task(&format!("task{}", i));
+                store_clone.store_task(&task).await.expect(&format!("unable to do an insert for task {}",i ));
+            });
+
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.await.expect("Unable to join");
+        }
+    }
 }
