@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "scheduler_core",
     "scheduler_service",
-    "commons",
     "scheduler_client",
     "worker_service",
 ]

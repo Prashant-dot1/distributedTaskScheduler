@@ -24,7 +24,7 @@ async fn main() -> Result<(), std::io::Error> {
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other,e))?
                     )
         },
-        _ =>  panic!("The message type value is not supported")
+        _ =>  panic!("The queue type value should be provided")
     };
 
     // Create scheduler with concrete implementations
