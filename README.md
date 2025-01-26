@@ -2,7 +2,7 @@
 
 A distributed task scheduling system implemented in Rust. The design of the system is as shown in the following diagram:
 
-![System Design](./assets/design-img.png)
+![System Design for Task scheduler](./assets/Design-img.png)
 
 ## Project Structure
 
