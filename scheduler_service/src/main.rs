@@ -1,11 +1,15 @@
 use std::sync::Arc;
+use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::post;
-use axum::Router;
+use axum::{Json, Router};
+use scheduler_core::error::SchedulerError;
 use scheduler_core::queue::rabbitmq::RabbitMQ;
 use scheduler_core::state::PostgresStore;
 use scheduler_core::queue::{InMemoryQueue, MessageQueue};
 use scheduler_core::scheduler::Scheduler;
 use dotenv::dotenv;
+use scheduler_core::task::Task;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -54,6 +58,19 @@ async fn main() -> Result<(), std::io::Error> {
 }
 
 
-async fn create_task() {
-    todo!()
+async fn create_task(State(scheduler) : State<Arc<Scheduler>> , Json(task): Json<Task> ) 
+ -> Result<(StatusCode, Json<Task>), (StatusCode, String)>{
+
+    let res = scheduler.schedule_task(task.clone()).await;
+
+    match res {
+        Ok(_) => Ok((StatusCode::CREATED, Json(task))),
+        Err(e) => match e {
+            SchedulerError::DependeciesNotMet(_) => {
+                Err((StatusCode::BAD_REQUEST, e.to_string()))
+            }
+            _ => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+    
 }
