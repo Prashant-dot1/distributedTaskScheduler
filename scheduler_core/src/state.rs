@@ -9,7 +9,7 @@ pub use self::postgres::PostgresStore;
 pub use self::in_memory_store::InMemoryStore;
 
 #[async_trait]
-pub trait StateStore {
+pub trait StateStore: Send + Sync {
     async fn store_task(&self, task : &Task) -> Result<(), SchedulerError>;
     async fn get_task(&self, task_id: Uuid) -> Result<Option<Task> , SchedulerError>;
     async fn update_task(&self, task_id: Uuid, status: TaskStatus) -> Result<(), SchedulerError>;

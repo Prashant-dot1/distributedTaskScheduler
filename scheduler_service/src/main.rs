@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use axum::routing::post;
+use axum::Router;
 use scheduler_core::queue::rabbitmq::RabbitMQ;
 use scheduler_core::state::PostgresStore;
 use scheduler_core::queue::{InMemoryQueue, MessageQueue};
@@ -16,7 +18,7 @@ async fn main() -> Result<(), std::io::Error> {
     let queue_type = std::env::var("QUEUE_TYPE");
 
     let queue = match queue_type.unwrap_or_else(|_ | "memory".to_string()).as_str() {
-        "memory" => Arc::new(InMemoryQueue::new()) as Arc<dyn MessageQueue>,
+        "memory" => Arc::new(InMemoryQueue::new()) as Arc<dyn MessageQueue + Send + Sync>,
         "rabbitmq" => {
             let url = std::env::var("RABBITMQ_URL").expect("This should be set if you want to use the rabbitmq service");
 
@@ -28,13 +30,30 @@ async fn main() -> Result<(), std::io::Error> {
     };
 
     // Create scheduler with concrete implementations
-    let _scheduler = Scheduler::new(queue, state_store);
+    let scheduler = Arc::new(Scheduler::new(queue, state_store));
 
-    println!("Scheduler service started successfully!");
+    // run the axum server
+    // routes for this
+    let app = Router::new().
+                                    route("/task", post(create_task))
+                                    .with_state(scheduler);
 
-    // Keep the service running
-    tokio::signal::ctrl_c().await?;
-    println!("Shutting down scheduler service...");
+
+    let port = std::env::var("PORT")
+                .unwrap_or_else(|_| "8080".to_string());
+    
+    let addr = format!("0.0.0.0:{}", port).parse::<std::net::SocketAddr>().unwrap();
+
+    println!("Scheduler service running on {}", addr);
+    // start 
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await?;
 
     Ok(())
+
+}
+
+
+async fn create_task() {
+    todo!()
 }

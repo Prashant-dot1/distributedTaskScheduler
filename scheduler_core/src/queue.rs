@@ -7,7 +7,7 @@ pub mod in_memory;
 pub use self::in_memory::InMemoryQueue;
 
 #[async_trait]
-pub trait MessageQueue {
+pub trait MessageQueue : Send + Sync {
     async fn publish_task(&self, task: Task) -> Result<(), SchedulerError>;
     async fn consume_task(&self) -> Result<Option<Task>, SchedulerError>;
 }
