@@ -2,8 +2,8 @@ use crate::{error::SchedulerError, queue::MessageQueue, state::{self, StateStore
 use std::sync::{Arc, RwLock};
 
 pub struct Scheduler {
-    queue: Arc<dyn MessageQueue>,
-    state_store: Arc<dyn StateStore>,
+    pub queue: Arc<dyn MessageQueue>,
+    pub state_store: Arc<dyn StateStore>,
     running_tasks: Arc<RwLock<Vec<Task>>>
 }
 

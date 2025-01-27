@@ -10,3 +10,4 @@ scheduler_core = { path = "../scheduler_core" }
 axum = "0.8.1"
 serde.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
