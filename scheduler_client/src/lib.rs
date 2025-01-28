@@ -1,14 +1,53 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use std::time::Duration;
+
+use reqwest::Client;
+use uuid::Uuid;
+use scheduler_core::task::{RetryPolicy,Schedule, Task};
+
+pub struct ShcedulerClient {
+    base_url:String,
+    client: Client
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub enum ClientError {
+    HttpError,
+    SchedulerError,
+    ConfigError
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl ShcedulerClient {
+    pub fn new(base_url : String) -> Self {
+        Self { base_url, client: Client::new() }
+    }
+
+    pub async fn schedule_task(&self, name: String, payload: serde_json::Value,
+    schedule: Schedule , dependencies: Vec<Uuid> , timeout : Duration, retry_policy : RetryPolicy) -> Result<Uuid,ClientError> {
+
+        let task = Task {
+            id: Uuid::new_v4(),
+            name,
+            payload,
+            schedule,
+            dependencies,
+            status: TaskStatus::Pending,
+            time_out: timeout,
+            retry_policy,
+        };
+
+        let response = self.client
+                        .post(format!("{}/task",self.base_url))
+                        .json(&task)
+                        .send()
+                        .await
+                        .map_err(|_| ClientError::HttpError)?;
+
+        if response.status().is_success() {
+            let task_id = response.json::<Task>().await
+                        .map_err(|_| ClientError::SchedulerError)?;
+            Ok(task.id)
+        }
+        else {
+            Err(ClientError::SchedulerError)
+        }
     }
 }
