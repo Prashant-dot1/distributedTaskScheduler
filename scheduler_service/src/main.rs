@@ -1,13 +1,14 @@
 use std::sync::Arc;
-use axum::routing::{post,get};
+use axum::routing::{post,get,put};
 use axum::Router;
+use dotenv::dotenv;
 use scheduler_core::queue::rabbitmq::RabbitMQ;
-use scheduler_core::state::PostgresStore;
 use scheduler_core::queue::{InMemoryQueue, MessageQueue};
 use scheduler_core::scheduler::Scheduler;
-use dotenv::dotenv;
+use scheduler_core::state::PostgresStore;
 
-pub mod handlers;
+mod handlers;
+
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
 
@@ -37,8 +38,10 @@ async fn main() -> Result<(), std::io::Error> {
     // routes for this
     let app = Router::new()
         .route("/task", post(handlers::create_task))
-        .route("/task/{task_id}", get(handlers::get_tasks))
-                                    .with_state(scheduler);
+        .route("/task/{task_id}", get(handlers::get_task_by_id))
+        .route("/task/pendingTasks", get(handlers::get_all_pending_tasks))
+        .route("/task/updateTask/{task_id}/status/{status}", put(handlers::update_task))
+        .with_state(scheduler);
 
 
     let port = std::env::var("PORT")

@@ -1,7 +1,10 @@
 use dotenv::dotenv;
-use scheduler_core::{queue::{self, rabbitmq::RabbitMQ, InMemoryQueue, MessageQueue}, state::PostgresStore, worker::Worker};
-
 use std::sync::Arc;
+use scheduler_core::{
+    queue::{rabbitmq::RabbitMQ, InMemoryQueue, MessageQueue},
+    state::PostgresStore,
+    worker::Worker,
+};
 
 #[tokio::main]
 async fn main() -> Result<(),std::io::Error> {
