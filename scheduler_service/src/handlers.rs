@@ -67,3 +67,21 @@ pub async fn update_task(State(scheduler) : State<Arc<Scheduler>>, Path((task_id
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR , e.to_string()))
     }
 }
+
+pub async fn cancel_task(State(scheduler) : State<Arc<Scheduler>>, Path(task_id) : Path<Uuid>)
+-> Result<StatusCode , (StatusCode , String)> {
+
+
+    let res = scheduler.state_store.update_task(task_id, TaskStatus::Failed { error: "Cancelled operations".to_owned(), attempts: 1 })
+            .await;
+
+    match res {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => {
+            match e {
+                SchedulerError::TaskNotFound(e) => Err((StatusCode::NOT_FOUND , e.to_string())),
+                _ => Err((StatusCode::INTERNAL_SERVER_ERROR , e.to_string()))
+            }
+        }
+    }
+}

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use axum::routing::{post,get,put};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use dotenv::dotenv;
 use scheduler_core::queue::rabbitmq::RabbitMQ;
@@ -41,6 +41,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/task/{task_id}", get(handlers::get_task_by_id))
         .route("/task/pendingTasks", get(handlers::get_all_pending_tasks))
         .route("/task/updateTask/{task_id}/status/{status}", put(handlers::update_task))
+        .route("task/{task_id}", delete(handlers::cancel_task))
         .with_state(scheduler);
 
 

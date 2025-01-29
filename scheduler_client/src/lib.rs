@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use uuid::Uuid;
-use scheduler_core::task::{RetryPolicy,Schedule, Task};
+use scheduler_core::task::{RetryPolicy,Schedule, Task, TaskStatus};
 
 pub struct ShcedulerClient {
     base_url:String,
@@ -49,5 +49,57 @@ impl ShcedulerClient {
         else {
             Err(ClientError::SchedulerError)
         }
+    }
+
+    pub async fn get_task_status(&self, task_id : Uuid) -> Result<Option<TaskStatus>, ClientError> {
+
+        let response = self.client.get(format!("{}/task/{}", self.base_url ,   task_id))
+                    .send()
+                    .await
+                    .map_err(|_| ClientError::HttpError)?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            Ok(None)
+        }
+
+        let task = response.error_for_status()?.json::<Task>().await
+                            .map_err(|_| ClientError::SchedulerError)?;
+        
+        Ok(Some(task.status))
+
+    } 
+
+    pub async fn get_task_by_id(&self, task_id : Uuid) -> Result<Option<Task> , ClientError> {
+
+        let response = self.client.get(format!("{}/task/{}", self.base_url , task_id))
+                    .send()
+                    .await
+                    .map_err(|_| ClientError::HttpError)?;
+
+        if response.status().is_success() {
+            let task = response.json::<Task>().await
+                    .map_err(|_| ClientError::SchedulerError)?;
+            
+            Ok(Some(task))
+        }
+        else {
+            Err(ClientError::SchedulerError)
+        }
+    }
+
+    pub async fn cancel_task(&self, task_id : Uuid) -> Result<bool,ClientError> {
+        let response = self.client
+                        .delete(format!("{}/task/{}", self.base_url, task_id))
+                        .send()
+                        .await
+                        .map_err(|| ClientError::HttpError)?;
+        
+
+        if response.status() == StatusCode::NOT_FOUND {
+            Ok(false)
+        }
+
+        response.error_for_status()?;
+        Ok(true)
     }
 }
