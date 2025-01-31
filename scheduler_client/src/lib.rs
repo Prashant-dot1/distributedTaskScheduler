@@ -1,18 +1,25 @@
 use std::time::Duration;
+use thiserror::Error;
 
 use reqwest::{Client, StatusCode};
 use uuid::Uuid;
-use scheduler_core::task::{RetryPolicy,Schedule, Task, TaskStatus};
+use scheduler_core::{error::SchedulerError, task::{RetryPolicy,Schedule, Task, TaskStatus}};
 
 pub struct ShcedulerClient {
     base_url:String,
     client: Client
 }
 
+#[derive(Debug , Error)]
 pub enum ClientError {
-    HttpError,
-    SchedulerError,
-    ConfigError
+    #[error("HTTP error: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[error("Scheduler error: {0}")]
+    SchedulerError(#[from] SchedulerError),
+    
+    #[error("Invalid configuration: {0}")]
+    ConfigError(String)
 }
 
 impl ShcedulerClient {

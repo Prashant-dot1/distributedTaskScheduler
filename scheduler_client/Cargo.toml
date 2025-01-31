@@ -12,3 +12,4 @@ serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
 scheduler_core = {path = "../scheduler_core"}
+thiserror = "2.0.11"
