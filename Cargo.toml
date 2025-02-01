@@ -5,6 +5,7 @@ members = [
     "scheduler_service",
     "scheduler_client",
     "worker_service",
+    "discovery_service",
 ]
 
 [workspace.dependencies]

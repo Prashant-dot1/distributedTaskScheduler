@@ -1,0 +1,9 @@
+[package]
+name = "discovery_service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio.workspace = true
+dotenv.workspace = true
+scheduler_core = { path = "../scheduler_core" }

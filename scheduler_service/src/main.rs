@@ -1,6 +1,4 @@
 // extern crate scheduler_core;
-
-
 use std::sync::Arc;
 use axum::routing::{delete, get, post, put};
 use axum::Router;

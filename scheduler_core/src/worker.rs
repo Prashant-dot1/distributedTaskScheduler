@@ -2,33 +2,55 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::{error::SchedulerError, queue::MessageQueue, state::StateStore, task::{RetryPolicy, Task, TaskStatus}};
+use crate::{error::SchedulerError, state::StateStore, task::{RetryPolicy, Task, TaskStatus}};
 
 pub struct Worker {
-    pub id : Uuid,
-    pub queue: Arc<dyn MessageQueue>,
-    pub state_store: Arc<dyn StateStore>
+    pub id: Uuid,
+    pub state_store: Arc<dyn StateStore>,
+    pub load: usize, // Track the number of tasks currently being processed
+    pub status: WorkerStatus,
+}
+
+pub enum WorkerStatus {
+    Idle,
+    Busy,
+    Offline,
 }
 
 impl Worker{
-    pub fn new(queue: Arc<dyn MessageQueue>, state_store: Arc<dyn StateStore>) -> Self {
+    pub fn new(state_store: Arc<dyn StateStore>) -> Self {
         Self {
             id: Uuid::new_v4(),
-            queue,
-            state_store
+            state_store,
+            load: 0,
+            status: WorkerStatus::Idle
         }
     }
 
-    pub async  fn start(&self) -> Result<(), SchedulerError> {
-        // continously consume tasks from the queue
-        loop {
-            if let Some(task) = self.queue.consume_task().await? {
-                // i need to process this
-                self.process_task(task).await?;
+    // pub async  fn start(&self) -> Result<(), SchedulerError> {
+    //     // continously consume tasks from the queue
+    //     loop {
+    //         if let Some(task) = self.queue.consume_task().await? {
+    //             // i need to process this
+    //             self.process_task(task).await?;
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            }
+    //             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    //         }
+    //     }
+    // }
+
+    pub async fn assign_task(&mut self, task : Task) -> Result<(), SchedulerError> {
+
+        self.load += 1;
+        self.status = WorkerStatus::Busy;
+        self.process_task(task).await?;
+
+        self.load -=1; // after the tasl completes the load is reduced 
+        if self.load == 0 {
+            self.status = WorkerStatus::Idle;
         }
+
+        Ok(())
     }
 
     async fn process_task(&self, task: Task) -> Result<(), SchedulerError> {
