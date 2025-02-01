@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{error::SchedulerError, state::StateStore, task::{RetryPolicy, Task, TaskStatus}};
@@ -11,6 +12,7 @@ pub struct Worker {
     pub status: WorkerStatus,
 }
 
+#[derive(Clone,Serialize)]
 pub enum WorkerStatus {
     Idle,
     Busy,
@@ -27,17 +29,16 @@ impl Worker{
         }
     }
 
-    // pub async  fn start(&self) -> Result<(), SchedulerError> {
-    //     // continously consume tasks from the queue
-    //     loop {
-    //         if let Some(task) = self.queue.consume_task().await? {
-    //             // i need to process this
-    //             self.process_task(task).await?;
+    pub async fn start(&self) -> Result<(), SchedulerError> {
+        // This method will now be called by the HTTP handler
+        // It should process a single task that's been assigned
+        self.process_assigned_task().await
+    }
 
-    //             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    //         }
-    //     }
-    // }
+    async fn process_assigned_task(&self) -> Result<(), SchedulerError> {
+        // TODO: Get the assigned task from state and process it
+        Ok(())
+    }
 
     pub async fn assign_task(&mut self, task : Task) -> Result<(), SchedulerError> {
 
@@ -45,7 +46,7 @@ impl Worker{
         self.status = WorkerStatus::Busy;
         self.process_task(task).await?;
 
-        self.load -=1; // after the tasl completes the load is reduced 
+        self.load -=1; // after the task completes the load is reduced 
         if self.load == 0 {
             self.status = WorkerStatus::Idle;
         }
@@ -132,4 +133,5 @@ impl Worker{
         println!("Task {} failed: {}", task.id, error);
         Ok(())
     }
+
 }
