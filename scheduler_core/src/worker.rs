@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use uuid::Uuid;
@@ -8,7 +8,11 @@ use crate::{error::SchedulerError, state::StateStore, task::{RetryPolicy, Task, 
 pub struct Worker {
     pub id: Uuid,
     pub state_store: Arc<dyn StateStore>,
-    pub load: usize, // Track the number of tasks currently being processed
+    pub inner: Mutex<WorkerState>
+}
+
+pub struct WorkerState {
+    pub load: usize,
     pub status: WorkerStatus,
 }
 
@@ -24,31 +28,33 @@ impl Worker{
         Self {
             id: Uuid::new_v4(),
             state_store,
-            load: 0,
-            status: WorkerStatus::Idle
+            inner: Mutex::new(WorkerState {
+                load: 0,
+                status: WorkerStatus::Idle
+            })
         }
     }
 
-    pub async fn start(&self) -> Result<(), SchedulerError> {
-        // This method will now be called by the HTTP handler
-        // It should process a single task that's been assigned
-        self.process_assigned_task().await
+    pub async fn start(&self, task_id: Uuid) -> Result<(), SchedulerError> {
+        self.process_assigned_task(task_id).await
     }
 
-    async fn process_assigned_task(&self) -> Result<(), SchedulerError> {
-        // TODO: Get the assigned task from state and process it
-        Ok(())
-    }
+    async fn process_assigned_task(&self, task_id: Uuid) -> Result<(), SchedulerError> {
+        let task = self.state_store.get_task(task_id).await?;
+        
+        if let Some(task) = task {
+            let mut worker_state = self.inner.lock().unwrap();
+            worker_state.load += 1;
+            worker_state.status = WorkerStatus::Busy;
+            drop(worker_state); 
 
-    pub async fn assign_task(&mut self, task : Task) -> Result<(), SchedulerError> {
+            self.process_task(task).await?;
 
-        self.load += 1;
-        self.status = WorkerStatus::Busy;
-        self.process_task(task).await?;
-
-        self.load -=1; // after the task completes the load is reduced 
-        if self.load == 0 {
-            self.status = WorkerStatus::Idle;
+            let mut worker_state = self.inner.lock().unwrap();
+            worker_state.load -= 1;
+            if worker_state.load == 0 {
+                worker_state.status = WorkerStatus::Idle;
+            }
         }
 
         Ok(())

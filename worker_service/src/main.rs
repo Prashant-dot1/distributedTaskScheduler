@@ -29,10 +29,12 @@ impl WorkerHandle {
 
     pub async fn send_heartbeat(&self, discovery_service_url: &str) -> Result<(), SchedulerError> {
         let client = Client::new();
+        let worker_state = self.inner.inner.lock().unwrap();
         let payload = HeartbeatPayload {
             worker_id: self.inner.id,
-            status: self.inner.status.clone() // You'll need to implement Clone for WorkerStatus
+            status: worker_state.status.clone()
         };
+        drop(worker_state);
 
         client.post(format!("{}/heartbeat", discovery_service_url))
             .json(&payload)
@@ -46,7 +48,7 @@ impl WorkerHandle {
     pub async fn handle_task_assignment(&self, task: TaskAssignment) -> Result<(), SchedulerError> {
         // Process the assigned task
         // need to look into this logic process the task
-        self.inner.start().await?;
+        self.inner.start(task.task_id).await?;
 
         Ok(())
     }
@@ -118,9 +120,7 @@ async fn handle_task_assignment(
     State(worker_handle): State<WorkerHandle>,
     Json(task): Json<TaskAssignment>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-
-    worker_handle.handle_task_assignment(task)
-        .await
+    worker_handle.handle_task_assignment(task).await
         .map(|_| StatusCode::OK)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
