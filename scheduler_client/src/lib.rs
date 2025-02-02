@@ -45,16 +45,16 @@ impl ShcedulerClient {
                         .post(format!("{}/task",self.base_url))
                         .json(&task)
                         .send()
-                        .await
-                        .map_err(|_| ClientError::HttpError)?;
+                        .await?;
 
         if response.status().is_success() {
-            let task_id = response.json::<Task>().await
-                        .map_err(|_| ClientError::SchedulerError)?;
+            let task = response.json::<Task>()
+                        .await?;
             Ok(task.id)
         }
         else {
-            Err(ClientError::SchedulerError)
+            // need to fix this error handling - kinda messed up
+            Err(ClientError::SchedulerError(SchedulerError::TaskNotFound(format!("task is not found"))))
         }
     }
 
@@ -62,48 +62,43 @@ impl ShcedulerClient {
 
         let response = self.client.get(format!("{}/task/{}", self.base_url ,   task_id))
                     .send()
-                    .await
-                    .map_err(|_| ClientError::HttpError)?;
+                    .await?;
 
         if response.status() == StatusCode::NOT_FOUND {
-            Ok(None)
+            return Ok(None);
         }
 
-        let task = response.error_for_status()?.json::<Task>().await
-                            .map_err(|_| ClientError::SchedulerError)?;
+        let task = response.error_for_status()?
+                          .json::<Task>()
+                          .await?;
         
         Ok(Some(task.status))
 
     } 
 
-    pub async fn get_task_by_id(&self, task_id : Uuid) -> Result<Option<Task> , ClientError> {
-
-        let response = self.client.get(format!("{}/task/{}", self.base_url , task_id))
+    pub async fn get_task_by_id(&self, task_id: Uuid) -> Result<Option<Task>, ClientError> {
+        let response = self.client.get(format!("{}/task/{}", self.base_url, task_id))
                     .send()
-                    .await
-                    .map_err(|_| ClientError::HttpError)?;
+                    .await?;
 
         if response.status().is_success() {
-            let task = response.json::<Task>().await
-                    .map_err(|_| ClientError::SchedulerError)?;
-            
+            let task = response.json::<Task>().await?;
             Ok(Some(task))
         }
         else {
-            Err(ClientError::SchedulerError)
+            // need to fix this error handling - kinda messed up
+            Err(ClientError::SchedulerError(SchedulerError::TaskNotFound(format!("task with id - {} , not found" , task_id))))
         }
     }
 
-    pub async fn cancel_task(&self, task_id : Uuid) -> Result<bool,ClientError> {
+    pub async fn cancel_task(&self, task_id: Uuid) -> Result<bool, ClientError> {
         let response = self.client
                         .delete(format!("{}/task/{}", self.base_url, task_id))
                         .send()
-                        .await
-                        .map_err(|| ClientError::HttpError)?;
+                        .await?;
         
-
         if response.status() == StatusCode::NOT_FOUND {
-            Ok(false)
+            return Ok(false);
         }
 
         response.error_for_status()?;

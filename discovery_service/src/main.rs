@@ -54,9 +54,6 @@ impl DiscoveryService {
                     .send()
                     .await
                     .map_err(|e| SchedulerError::WorkerError(e.to_string()))?;
-
-                worker.status = WorkerStatus::Busy;
-                worker.load += 1;
             }
         } 
 
