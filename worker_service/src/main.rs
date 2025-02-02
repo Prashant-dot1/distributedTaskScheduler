@@ -116,7 +116,8 @@ async fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn handle_task_assignment(
+#[axum::debug_handler]
+pub async fn handle_task_assignment(
     State(worker_handle): State<WorkerHandle>,
     Json(task): Json<TaskAssignment>,
 ) -> Result<StatusCode, (StatusCode, String)> {
