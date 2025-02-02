@@ -18,7 +18,7 @@ struct HeartbeatPayload {
 }
 
 #[derive(Clone)]
-struct WorkerHandle {
+pub struct WorkerHandle {
     inner: Arc<Worker>
 }
 
@@ -29,12 +29,18 @@ impl WorkerHandle {
 
     pub async fn send_heartbeat(&self, discovery_service_url: &str) -> Result<(), SchedulerError> {
         let client = Client::new();
-        let worker_state = self.inner.inner.lock().unwrap();
-        let payload = HeartbeatPayload {
-            worker_id: self.inner.id,
-            status: worker_state.status.clone()
+        let payload = {
+            
+            let worker_state = {
+                let guard = self.inner.inner.lock().unwrap();
+                guard.status.clone()
+            };
+
+            HeartbeatPayload {
+                worker_id: self.inner.id,
+                status: worker_state
+            }
         };
-        drop(worker_state);
 
         client.post(format!("{}/heartbeat", discovery_service_url))
             .json(&payload)
@@ -54,8 +60,8 @@ impl WorkerHandle {
     }
 }
 
-#[derive(Deserialize)]
-struct TaskAssignment {
+#[derive(Deserialize, Debug)]
+pub struct TaskAssignment {
     task_id: Uuid,
     // Add other task-related fields
 }
@@ -121,7 +127,12 @@ pub async fn handle_task_assignment(
     State(worker_handle): State<WorkerHandle>,
     Json(task): Json<TaskAssignment>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    worker_handle.handle_task_assignment(task).await
-        .map(|_| StatusCode::OK)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
+
+    let res = worker_handle.handle_task_assignment(task).await;
+
+    match res {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => Err((StatusCode::BAD_REQUEST , e.to_string()))
+    }
+    
 }

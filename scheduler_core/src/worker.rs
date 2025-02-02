@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{error::SchedulerError, state::StateStore, task::{RetryPolicy, Task, TaskStatus}};
@@ -43,17 +43,21 @@ impl Worker{
         let task = self.state_store.get_task(task_id).await?;
         
         if let Some(task) = task {
-            let mut worker_state = self.inner.lock().unwrap();
-            worker_state.load += 1;
-            worker_state.status = WorkerStatus::Busy;
-            drop(worker_state); 
+
+            {
+                let mut worker_state = self.inner.lock().unwrap();
+                worker_state.load += 1;
+                worker_state.status = WorkerStatus::Busy;
+            }
 
             self.process_task(task).await?;
 
-            let mut worker_state = self.inner.lock().unwrap();
-            worker_state.load -= 1;
-            if worker_state.load == 0 {
-                worker_state.status = WorkerStatus::Idle;
+            {
+                let mut worker_state = self.inner.lock().unwrap();
+                worker_state.load -= 1;
+                if worker_state.load == 0 {
+                    worker_state.status = WorkerStatus::Idle;
+                }
             }
         }
 
