@@ -1,6 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use tokio::time::{sleep, timeout, Sleep};
 use uuid::Uuid;
 
 use crate::{error::SchedulerError, state::StateStore, task::{RetryPolicy, Task, TaskStatus}};
@@ -122,21 +123,11 @@ impl Worker{
             },
             RetryPolicy::Failed { attempts, delay } => {
                 // TODO: Implement retry logic
-                
-                // marking as failed for now
-                self.state_store.update_task(task.id, TaskStatus::Failed { 
-                    error: error.to_string(), 
-                    attempts: 1 
-                }).await?;
+                self.retry_without_backoff( attempts ,&task, delay, None, None).await?;
             },
-            RetryPolicy::ExponentialBackoff { .. } => {
+            RetryPolicy::ExponentialBackoff { max_attempts , max_delay ,initial_delay , multiplier } => {
                 // TODO: Implement exponential backoff retry logic
-                
-                // marking as failed for now
-                self.state_store.update_task(task.id, TaskStatus::Failed { 
-                    error: error.to_string(), 
-                    attempts: 1 
-                }).await?;
+                self.retry_without_backoff( max_attempts ,&task, max_delay , Some(initial_delay), Some(multiplier)).await?;
             }
         }
         
@@ -144,4 +135,78 @@ impl Worker{
         Ok(())
     }
 
+
+    async fn retry_without_backoff(&self,attempts : &u32 , task : &Task, delay : &Duration, initial_delay: Option<&Duration> , multiplier: Option<&f32>) -> Result<(), SchedulerError> {
+
+        let mut cur_attempts = 1;
+        let mut cur_delay: f32 = 1.0;
+
+        if initial_delay.is_some() {
+            tokio::time::sleep(*initial_delay.unwrap()).await;
+        }
+
+        loop {
+            let res = tokio::time::timeout(task.time_out, async {
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Ok::<(), SchedulerError>(())
+            }).await;
+
+            match res {
+                Ok(result) => {
+                    match result {
+                        Ok(_) => {
+                            self.state_store.update_task(task.id, TaskStatus::Completed { 
+                                result: serde_json::json!({
+                                    "status": "success",
+                                    "completed_by": self.id.to_string(),
+                                    "completed_at": chrono::Utc::now().to_rfc3339()
+                                })
+                            }).await?;
+                            println!("Task {} completed successfully", task.id);
+                            return Ok(())
+                        },
+                        Err(e) if cur_attempts < *attempts => {
+                            println!("Attempts {} failed: {}... retrying..", cur_attempts , e.to_string());
+
+
+                            self.state_store.update_task(task.id, TaskStatus::Failed { 
+                                error: format!("Attempts {} failed: {}... retrying..", cur_attempts , e.to_string()),
+                                attempts: cur_attempts
+                            }).await?;
+
+                            cur_attempts += 1;
+
+                            if multiplier.is_some() {
+                                cur_delay = cur_delay * multiplier.unwrap();
+                                tokio::time::sleep( Duration::from_secs_f32(cur_delay)).await;
+                            }
+                            else {
+                                tokio::time::sleep(*delay).await;
+                            }
+                        },
+                        Err(e) => {
+                            println!("Attempts exhausted returning error");
+
+                            self.state_store.update_task(task.id, TaskStatus::Failed { 
+                                error: format!("All the attempts exhausted: {}", e.to_string()), 
+                                attempts: cur_attempts
+                            }).await?;
+
+                            return Err(e);
+                        }
+                    }
+                },
+                Err(e) => {
+                    // Task timed out
+                    return Err(SchedulerError::WorkerError(format!("The task execution timed out {}",e.to_string())))
+                }
+            }
+
+        }
+    }
+
 }
+
+
+
