@@ -1,4 +1,6 @@
 use dotenv::dotenv;
+use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 use std::{sync::Arc, time::Duration};
 use scheduler_core::{
     error::SchedulerError, queue::{rabbitmq::RabbitMQ, InMemoryQueue, MessageQueue}, state::PostgresStore, worker::{Worker, WorkerStatus}
@@ -70,10 +72,22 @@ pub struct TaskAssignment {
 async fn main() -> Result<(), std::io::Error> {
     dotenv().ok();
 
-    let state_store = Arc::new(PostgresStore::new(None).await.expect("Failed to get the db store"));
+
+    tracing_subscriber::fmt()
+    .with_env_filter(EnvFilter::from_default_env().add_directive("worker_service=info".parse().unwrap())).init();
+
+    info!("Intialising worker service....");
+
+    let state_store = Arc::new(PostgresStore::new(None).await.map_err(|e| {
+       error!("Failed to initialised the database connection..");
+       std::io::Error::new(std::io::ErrorKind::Other , e)
+    })?);
 
     let discovery_service_url = std::env::var("DISCOVERY_SERVICE_URL")
-        .expect("DISCOVERY_SERVICE_URL must be set");
+        .map_err(|e| {
+            error!("DISCOVERY_SERVICE_URL env variable is not set");
+            std::io::Error::new(std::io::ErrorKind::Other , e)
+        })?;
 
     let worker = Arc::new(Worker::new(state_store));
     let worker_handle = WorkerHandle::new(worker.clone());
