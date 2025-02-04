@@ -1,5 +1,5 @@
 use dotenv::dotenv;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 use std::{sync::Arc, time::Duration};
 use scheduler_core::{
@@ -34,7 +34,12 @@ impl WorkerHandle {
         let payload = {
             
             let worker_state = {
-                let guard = self.inner.inner.lock().unwrap();
+                let guard = self.inner.inner.lock()
+                            .map_err(|e| {
+                                error!("Failed to acquire lock on the worker state {}", e);
+                                SchedulerError::WorkerError(format!("Failed to acquire a lock: {}", e.to_string()))
+                            })?;
+
                 guard.status.clone()
             };
 
@@ -44,12 +49,17 @@ impl WorkerHandle {
             }
         };
 
+
+        debug!("Sending heartbeat for worker {}", self.inner.id);
+
         client.post(format!("{}/heartbeat", discovery_service_url))
             .json(&payload)
             .send()
             .await
             .map_err(|e| SchedulerError::WorkerError(e.to_string()))?;
 
+
+        debug!("Heartbeat sent");
         Ok(())
     }
 
@@ -90,6 +100,7 @@ async fn main() -> Result<(), std::io::Error> {
         })?;
 
     let worker = Arc::new(Worker::new(state_store));
+    info!("Created a worker handler with ID : {}", worker.id);
     let worker_handle = WorkerHandle::new(worker.clone());
 
     // Periodically send heartbeat
@@ -99,7 +110,7 @@ async fn main() -> Result<(), std::io::Error> {
         loop {
             interval.tick().await;
             if let Err(e) = worker_handle_clone.send_heartbeat(&discovery_service_url).await {
-                eprintln!("Failed to send heartbeat: {}", e);
+                error!("Failed to send heartbeat {}", e);
             }
         }
     });
@@ -110,8 +121,8 @@ async fn main() -> Result<(), std::io::Error> {
         .with_state(worker_handle);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
-    println!("Worker service running..., Worker ID: {}", worker.id);
-    println!("Listening on {}", addr);
+    info!("Worker service initialised successfully..");
+    info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener,app.into_make_service())
@@ -130,11 +141,20 @@ pub async fn handle_task_assignment(
     Json(task): Json<TaskAssignment>,
 ) -> Result<StatusCode, (StatusCode, String)> {
 
+    info!("Received a task assignment with task id {}", task.task_id);
+
     let res = worker_handle.handle_task_assignment(task).await;
 
     match res {
-        Ok(_) => Ok(StatusCode::OK),
-        Err(e) => Err((StatusCode::BAD_REQUEST , e.to_string()))
+        Ok(_) => 
+        {
+            info!("Successfully processed the task");
+            Ok(StatusCode::OK)
+        },
+        Err(e) => {
+            error!("Failed to process the task: {}", e);
+            Err((StatusCode::BAD_REQUEST , e.to_string()))
+        }
     }
     
 }
