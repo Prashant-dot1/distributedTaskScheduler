@@ -1,9 +1,11 @@
 use dotenv::dotenv;
+use metrics::{counter, gauge};
+use metrics_exporter_prometheus::PrometheusBuilder;
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 use std::{sync::Arc, time::Duration};
 use scheduler_core::{
-    error::SchedulerError, queue::{rabbitmq::RabbitMQ, InMemoryQueue, MessageQueue}, state::PostgresStore, worker::{Worker, WorkerStatus}
+    error::SchedulerError, state::PostgresStore, worker::{Worker, WorkerStatus}
 };
 use reqwest::Client;
 use serde::{Serialize, Deserialize};
@@ -30,12 +32,15 @@ impl WorkerHandle {
     }
 
     pub async fn send_heartbeat(&self, discovery_service_url: &str) -> Result<(), SchedulerError> {
+        let x = counter!("worker.heartbeat.attempts").increment(1);
+        
         let client = Client::new();
         let payload = {
             
             let worker_state = {
                 let guard = self.inner.inner.lock()
                             .map_err(|e| {
+                                counter!("worker.heartbeat.errors").increment(1);
                                 error!("Failed to acquire lock on the worker state {}", e);
                                 SchedulerError::WorkerError(format!("Failed to acquire a lock: {}", e.to_string()))
                             })?;
@@ -52,23 +57,43 @@ impl WorkerHandle {
 
         debug!("Sending heartbeat for worker {}", self.inner.id);
 
-        client.post(format!("{}/heartbeat", discovery_service_url))
+        let result = client.post(format!("{}/heartbeat", discovery_service_url))
             .json(&payload)
             .send()
-            .await
-            .map_err(|e| SchedulerError::WorkerError(e.to_string()))?;
+            .await;
 
-
-        debug!("Heartbeat sent");
-        Ok(())
+        match result {
+            Ok(_) => {
+                counter!("worker.heartbeat.success").increment(1);
+                debug!("Heartbeat sent");
+                Ok(())
+            },
+            Err(e) => {
+                counter!("worker.heartbeat.errors").increment(1);
+                Err(SchedulerError::WorkerError(e.to_string()))
+            }
+        }
     }
 
     pub async fn handle_task_assignment(&self, task: TaskAssignment) -> Result<(), SchedulerError> {
-        // Process the assigned task
-        // need to look into this logic process the task
-        self.inner.start(task.task_id).await?;
+        counter!("worker.tasks.received").increment(1);
 
-        Ok(())
+        
+        gauge!("worker.last_task_received_timestamp").set(std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as f64);
+        
+        match self.inner.start(task.task_id).await {
+            Ok(_) => {
+                counter!("worker.tasks.processed").increment(1);
+                Ok(())
+            },
+            Err(e) => {
+                counter!("worker.tasks.errors").increment(1);
+                Err(e)
+            }
+        }
     }
 }
 
@@ -78,10 +103,21 @@ pub struct TaskAssignment {
     // Add other task-related fields
 }
 
+// Add new metrics endpoint handler
+async fn metrics() -> String {
+    metrics_exporter_prometheus::encode_to_string()
+        .unwrap_or_else(|_| "Failed to encode metrics".to_string())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     dotenv().ok();
 
+    // Initialize metrics
+    PrometheusBuilder::new()
+        .with_namespace("worker_service")
+        .install()
+        .expect("Failed to install Prometheus recorder");
 
     tracing_subscriber::fmt()
     .with_env_filter(EnvFilter::from_default_env().add_directive("worker_service=info".parse().unwrap())).init();
@@ -118,6 +154,7 @@ async fn main() -> Result<(), std::io::Error> {
     // Set up HTTP server
     let app = Router::new()
         .route("/task", post(handle_task_assignment))
+        .route("/metrics", get(metrics))
         .with_state(worker_handle);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
