@@ -11,7 +11,7 @@ use reqwest::Client;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use axum::{
-    extract::State, http::StatusCode, routing::post, Json, Router
+    extract::State, http::StatusCode, routing::{post, get}, Json, Router
 };
 use std::net::SocketAddr;
 
@@ -32,7 +32,7 @@ impl WorkerHandle {
     }
 
     pub async fn send_heartbeat(&self, discovery_service_url: &str) -> Result<(), SchedulerError> {
-        let x = counter!("worker.heartbeat.attempts").increment(1);
+        counter!("worker.heartbeat.attempts", 1);
         
         let client = Client::new();
         let payload = {
@@ -40,7 +40,7 @@ impl WorkerHandle {
             let worker_state = {
                 let guard = self.inner.inner.lock()
                             .map_err(|e| {
-                                counter!("worker.heartbeat.errors").increment(1);
+                                counter!("worker.heartbeat.errors", 1);
                                 error!("Failed to acquire lock on the worker state {}", e);
                                 SchedulerError::WorkerError(format!("Failed to acquire a lock: {}", e.to_string()))
                             })?;
@@ -64,33 +64,29 @@ impl WorkerHandle {
 
         match result {
             Ok(_) => {
-                counter!("worker.heartbeat.success").increment(1);
+                counter!("worker.heartbeat.success", 1);
                 debug!("Heartbeat sent");
                 Ok(())
             },
             Err(e) => {
-                counter!("worker.heartbeat.errors").increment(1);
+                counter!("worker.heartbeat.errors", 1);
                 Err(SchedulerError::WorkerError(e.to_string()))
             }
         }
     }
 
     pub async fn handle_task_assignment(&self, task: TaskAssignment) -> Result<(), SchedulerError> {
-        counter!("worker.tasks.received").increment(1);
+        counter!("worker.tasks.received", 1);
 
-        
-        gauge!("worker.last_task_received_timestamp").set(std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as f64);
+    
         
         match self.inner.start(task.task_id).await {
             Ok(_) => {
-                counter!("worker.tasks.processed").increment(1);
+                counter!("worker.tasks.processed", 1);
                 Ok(())
             },
             Err(e) => {
-                counter!("worker.tasks.errors").increment(1);
+                counter!("worker.tasks.errors", 1);
                 Err(e)
             }
         }
@@ -105,8 +101,9 @@ pub struct TaskAssignment {
 
 // Add new metrics endpoint handler
 async fn metrics() -> String {
-    metrics_exporter_prometheus::encode_to_string()
-        .unwrap_or_else(|_| "Failed to encode metrics".to_string())
+    metrics_exporter_prometheus::PrometheusBuilder::new();
+
+    todo!()
 }
 
 #[tokio::main]
@@ -115,7 +112,6 @@ async fn main() -> Result<(), std::io::Error> {
 
     // Initialize metrics
     PrometheusBuilder::new()
-        .with_namespace("worker_service")
         .install()
         .expect("Failed to install Prometheus recorder");
 
